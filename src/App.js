@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-//import types from 'prop-types';
+import types from 'prop-types';
 import './App.css';
 import ColorButtonGrid from './ColorButtonGrid';
 
@@ -14,12 +14,112 @@ const PLAYER_INPUT_TIMEOUT = 5000;
 const SIMON_COLOR_DURATION = 1000;
 const SIMON_PAUSE_DURATION = 500;
 
+const withPropQueue = (Wrapped) => {
+  return class PropQueued extends Component{
+
+    state = {
+      propQueue: []
+    };
+
+    componentDidMount(){
+      const {propQueue} = this.props;
+      this.setState({
+        propQueue
+      });
+    }
+
+    componentWillReceiveProps({propQueue}){
+      if(this.props.propQueue !== propQueue){
+        this.setState({
+          propQueue
+        });
+      }
+    }
+
+    componentDidUpdate(){
+      const currentQueuedProps = this.state.propQueue[0];
+      if(currentQueuedProps){
+        this.timeout = setTimeout(() => {
+          let remaining = this.state.propQueue.slice(1);
+          this.setState({
+            propQueue: remaining
+          });
+          if(remaining.length === 0) this.props.onQueueEnd();
+        }, currentQueuedProps.duration);
+      }
+    }
+
+    render(){
+      const {onQueueEnd, ...others} = this.props;
+      const {propQueue} = this.state;
+      delete others.propQueue;
+
+      let queuedProps = (propQueue[0] || {}).props;
+      return (
+        <Wrapped {...{
+          ...others,
+          ...queuedProps
+        }} />
+      )
+    }
+  }
+}
+
+const QueuedColorButtonGrid = withPropQueue(ColorButtonGrid);
+
+class SequencedColorButtonGrid extends Component{
+
+  static propTypes = {
+    sequence: types.array.isRequired
+  }
+
+  makePropQueue = (sequence) => {
+    if(!sequence || !sequence[0]) return [];
+    const pause = {
+      props:{
+        currentOn: null
+      },
+      duration: SIMON_PAUSE_DURATION
+    };
+
+    const showColor = (color) => ({
+      props:{
+        currentOn: color
+      },
+      duration: SIMON_COLOR_DURATION
+    })
+
+    return sequence.slice(1).reduce(
+      (q, color) => {
+        return q.concat([
+          pause,
+          showColor(color)
+        ]);
+      },
+      [showColor(sequence[0])]
+    );
+  }
+
+  render(){
+    const {sequence} = this.props;
+
+    return (
+      <QueuedColorButtonGrid
+        {...this.props}
+        propQueue={this.makePropQueue(sequence)}
+      />
+    );
+  }
+}
+
+const NO_SEQUENCE = [];
+
+
 class SimonSaysGame extends Component{
 
   state = {
     mode: MODES.OFF,
     simonSequence: [],
-    isSimonBetweenColors: false,
     currentIndex: 0,
     gameOverReason: null
   };
@@ -27,38 +127,8 @@ class SimonSaysGame extends Component{
   componentDidUpdate(){
     const {mode} = this.state;
 
-    if(mode === MODES.SIMON){
-      this.prepareNextSimonAction();
-    }
     if(mode === MODES.PLAYER){
       this.resetPlayerTimeout();
-    }
-  }
-
-  prepareNextSimonAction = () => {
-    const {isSimonBetweenColors, currentIndex} = this.state;
-
-    clearTimeout(this.simonTimeout);
-
-    if(isSimonBetweenColors){
-      this.simonTimeout = setTimeout(() => {
-        this.setState({
-          isSimonBetweenColors: false,
-          currentIndex: currentIndex + 1
-        });
-      }, SIMON_PAUSE_DURATION);
-    }else{
-      this.simonTimeout = setTimeout(() => {
-        const {simonSequence, currentIndex} = this.state;
-        if( currentIndex + 1 >= simonSequence.length){
-          console.log('SEQUENCE OVER - PLAYERS TURN');
-          this.startPlayersTurn();
-        }else{
-          this.setState({
-            isSimonBetweenColors: true
-          });
-        }
-      }, SIMON_COLOR_DURATION);
     }
   }
 
@@ -66,17 +136,14 @@ class SimonSaysGame extends Component{
     const {simonSequence} = this.state;
     this.setState({
       mode: MODES.SIMON,
-      simonSequence: simonSequence.concat([this.randomNextColor()]),
-      currentIndex: 0,
-      isSimonBetweenColors: false
+      simonSequence: simonSequence.concat([this.randomNextColor()])
     });
   };
 
   startPlayersTurn = () => {
     this.setState({
       mode: MODES.PLAYER,
-      currentIndex: 0,
-      isSimonBetweenColors: false
+      currentIndex: 0
     });
   }
 
@@ -124,9 +191,7 @@ class SimonSaysGame extends Component{
     console.log('START GAME');
     this.setState({
       mode: MODES.SIMON,
-      simonSequence: [this.randomNextColor()],
-      currentIndex: 0,
-      isSimonBetweenColors: false
+      simonSequence: [this.randomNextColor()]
     });
   };
 
@@ -135,7 +200,7 @@ class SimonSaysGame extends Component{
   };
 
   render(){
-    const {simonSequence, mode, isSimonBetweenColors, gameOverReason, currentIndex} = this.state;
+    const {simonSequence, mode, gameOverReason} = this.state;
     const score = simonSequence.length ? simonSequence.length - 1 : 0;
 
     return (
@@ -151,10 +216,15 @@ class SimonSaysGame extends Component{
           ])}
         </p>
         <br />
-        <ColorButtonGrid {...{
-          currentOn: mode === MODES.SIMON && !isSimonBetweenColors && simonSequence[currentIndex],
+        <SequencedColorButtonGrid {...{
           clickable: mode === MODES.PLAYER,
           onPlayerSelectColor: this.processPlayerColor,
+          sequence: (mode === MODES.SIMON && simonSequence) || NO_SEQUENCE,
+          onQueueEnd:() => {
+            if(mode === MODES.SIMON){
+              this.startPlayersTurn();
+            }
+          }
         }} />
         <br />
         <p>Score: {score}</p>
