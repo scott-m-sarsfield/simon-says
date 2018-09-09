@@ -37,11 +37,12 @@ class OnIndicator extends Component{
 class ColorButton extends Component{
   static propTypes = {
     color: types.string.isRequired,
-    on: types.bool.isRequired
+    on: types.bool.isRequired,
+    onClick: types.func.isRequired
   };
 
   render(){
-    const {color, on} = this.props;
+    const {color, on, onClick} = this.props;
 
     const styles = {
       height: 200,
@@ -52,7 +53,7 @@ class ColorButton extends Component{
       position: 'relative'
     };
     return (
-      <div style={styles}>
+      <div style={styles} onClick={onClick}>
         {on && (
           <OnIndicator />
         )}
@@ -61,36 +62,140 @@ class ColorButton extends Component{
   }
 }
 
+const MODES = {
+  SIMON: 0,
+  PLAYER: 1,
+  OFF: 2,
+  GAME_OVER: 3
+};
+
 class SimonSaysGame extends Component{
 
   state = {
-    currentOn: 0
+    mode: MODES.OFF,
+    simonSequence: [],
+    inSimonPause: false,
+    currentIndex: 0,
+    gameOverReason: null
   };
 
-  componentDidMount(){
-    this.timer = setInterval(() => {
-      this.setOn(
-        (this.state.currentOn + 1) % 4
-      );
-    }, 1000);
+  componentDidUpdate(){
+    const {mode, inSimonPause} = this.state;
+    if(mode === MODES.SIMON){
+      if(inSimonPause){
+        this.timeout = setTimeout(this.showNextColorOrPlayersTurn, 500);
+      }else{
+        this.timeout = setTimeout(() => {
+          this.setState({
+            inSimonPause: true
+          });
+        }, 1000)
+      }
+    }
+    if(mode === MODES.PLAYER){
+      this.timeout = setTimeout(() => {
+        console.log('GAME OVER - TIMED OUT');
+        this.setState({
+          mode: MODES.GAME_OVER,
+          gameOverReason: 'Too slow.'
+        });
+      }, 5000);
+    }
   }
 
+  showNextColorOrPlayersTurn = () => {
+    const {simonSequence, currentIndex} = this.state;
+    if( currentIndex + 1 >= simonSequence.length){
+      console.log('SEQUENCE OVER - PLAYERS TURN');
+      this.setState({
+        mode: MODES.PLAYER,
+        currentIndex: 0,
+        isSimonPause: false
+      });
+    }else{
+      this.setState({
+        currentIndex: currentIndex + 1,
+        inSimonPause: false
+      });
+    }
+  }
 
-  setOn(n){
+  setOn = (n) => {
     this.setState({
       currentOn: n
     });
-  }
+  };
+
+  processPlayerColor = (n) => {
+    const {mode, simonSequence, currentIndex} = this.state;
+    if(mode !== MODES.PLAYER) return;
+
+    clearTimeout(this.timeout);
+
+    if(n !== simonSequence[currentIndex]){
+      console.log(n, simonSequence, currentIndex);
+      console.log('INCORRECT COLOR');
+      this.setState({
+        mode: MODES.GAME_OVER,
+        gameOverReason: 'Incorrect color.'
+      });
+    }
+
+    if(currentIndex + 1 >= simonSequence.length){
+      console.log('CORRECT SEQUENCE - BACK TO SIMON');
+      this.setState({
+        mode: MODES.SIMON,
+        simonSequence: simonSequence.concat([this.randomNextColor()]),
+        currentIndex: 0,
+        inSimonPause: false
+      });
+    }else{
+      console.log('CORRECT COLOR - KEEP GOING');
+      this.setState({
+        currentIndex: currentIndex + 1
+      });
+    }
+  };
+
+  startGame = () => {
+    console.log('START GAME');
+    this.setState({
+      mode: MODES.SIMON,
+      simonSequence: [this.randomNextColor()],
+      currentIndex: 0
+    });
+  };
+
+  randomNextColor = () => {
+    return Math.floor(Math.random()*4);
+  };
 
   render(){
-    const {currentOn} = this.state;
+    const {simonSequence, mode, currentIndex, gameOverReason, inSimonPause} = this.state;
+    const score = simonSequence.length ? simonSequence.length - 1 : 0;
+
+    const currentOn = (mode === MODES.SIMON && !inSimonPause && simonSequence[currentIndex]);
+
     return (
       <div>
-        <ColorButton color='green' on={currentOn === 0}/>
-        <ColorButton color='red' on={currentOn === 1}/>
+        <p>
+          {mode === MODES.OFF && (<button onClick={this.startGame}>Start Game</button>)}
+          {mode === MODES.SIMON && ("Simon's Turn")}
+          {mode === MODES.PLAYER && ("Your Turn")}
+          {mode === MODES.GAME_OVER && ([
+            <span key='reason'>{gameOverReason}</span>,
+            <span style={{marginRight:'1em'}} key='space'/>,
+            <button onClick={this.startGame} key='restart'>Restart</button>
+          ])}
+        </p>
         <br />
-        <ColorButton color='blue' on={currentOn === 3}/>
-        <ColorButton color='#dd1' on={currentOn === 2}/>
+        <ColorButton color='green' on={currentOn === 0} onClick={this.processPlayerColor.bind(null,0)}/>
+        <ColorButton color='red' on={currentOn === 1} onClick={this.processPlayerColor.bind(null,1)}/>
+        <br />
+        <ColorButton color='blue' on={currentOn === 3} onClick={this.processPlayerColor.bind(null,3)}/>
+        <ColorButton color='#dd1' on={currentOn === 2} onClick={this.processPlayerColor.bind(null,2)}/>
+        <br />
+        <p>Score: {score}</p>
       </div>
     )
   }
