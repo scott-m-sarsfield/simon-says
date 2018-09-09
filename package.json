@@ -2,6 +2,7 @@
   "name": "simon-says",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://scott-m-sarfield.github.io/simon-says",
   "dependencies": {
     "react": "^16.5.0",
     "react-dom": "^16.5.0",
