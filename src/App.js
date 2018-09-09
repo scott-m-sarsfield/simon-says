@@ -38,11 +38,33 @@ class ColorButton extends Component{
   static propTypes = {
     color: types.string.isRequired,
     on: types.bool.isRequired,
-    onClick: types.func.isRequired
+    onClick: types.func.isRequired,
+    clickable: types.bool.isRequired
+  };
+
+  state = {
+    responsiveOn: false
+  }
+
+  handleMouseDown = () => {
+    const {clickable, onClick} = this.props;
+    if(clickable){
+      this.setState({
+        responsiveOn: true
+      });
+      onClick();
+    }
+  };
+
+  handleMouseUp = () => {
+    this.setState({
+      responsiveOn: false
+    });
   };
 
   render(){
-    const {color, on, onClick} = this.props;
+    const {color, on} = this.props;
+    const {responsiveOn} = this.state;
 
     const styles = {
       height: 200,
@@ -53,8 +75,8 @@ class ColorButton extends Component{
       position: 'relative'
     };
     return (
-      <div style={styles} onClick={onClick}>
-        {on && (
+      <div style={styles} onMouseDown={this.handleMouseDown} onMouseUp={this.handleMouseUp}>
+        {(on || responsiveOn) && (
           <OnIndicator />
         )}
       </div>
@@ -81,15 +103,18 @@ class SimonSaysGame extends Component{
 
   componentDidUpdate(){
     const {mode, inSimonPause} = this.state;
+    clearTimeout(this.timeout);
+
     if(mode === MODES.SIMON){
       if(inSimonPause){
-        this.timeout = setTimeout(this.showNextColorOrPlayersTurn, 500);
-      }else{
         this.timeout = setTimeout(() => {
           this.setState({
-            inSimonPause: true
+            inSimonPause: false
           });
-        }, 1000)
+        }, 500);
+        return;
+      }else{
+        this.timeout = setTimeout(this.showNextColorOrPlayersTurn, 1000);
       }
     }
     if(mode === MODES.PLAYER){
@@ -103,6 +128,8 @@ class SimonSaysGame extends Component{
     }
   }
 
+
+
   showNextColorOrPlayersTurn = () => {
     const {simonSequence, currentIndex} = this.state;
     if( currentIndex + 1 >= simonSequence.length){
@@ -110,12 +137,12 @@ class SimonSaysGame extends Component{
       this.setState({
         mode: MODES.PLAYER,
         currentIndex: 0,
-        isSimonPause: false
+        inSimonPause: false
       });
     }else{
       this.setState({
-        currentIndex: currentIndex + 1,
-        inSimonPause: false
+        inSimonPause: true,
+        currentIndex: currentIndex + 1
       });
     }
   }
@@ -139,6 +166,7 @@ class SimonSaysGame extends Component{
         mode: MODES.GAME_OVER,
         gameOverReason: 'Incorrect color.'
       });
+      return;
     }
 
     if(currentIndex + 1 >= simonSequence.length){
@@ -162,7 +190,8 @@ class SimonSaysGame extends Component{
     this.setState({
       mode: MODES.SIMON,
       simonSequence: [this.randomNextColor()],
-      currentIndex: 0
+      currentIndex: 0,
+      isSimonPause: false
     });
   };
 
@@ -170,11 +199,36 @@ class SimonSaysGame extends Component{
     return Math.floor(Math.random()*4);
   };
 
-  render(){
-    const {simonSequence, mode, currentIndex, gameOverReason, inSimonPause} = this.state;
-    const score = simonSequence.length ? simonSequence.length - 1 : 0;
+  renderGrid = () => {
+    const {simonSequence, mode, currentIndex, inSimonPause} = this.state;
 
     const currentOn = (mode === MODES.SIMON && !inSimonPause && simonSequence[currentIndex]);
+
+    const [GREEN,RED,YELLOW,BLUE] = ['green','red','#dd0','blue'].map( (color, index) => ({color, index}) );
+
+    const renderButton = ({color,index}) => (
+      <ColorButton {...{
+        color,
+        on: currentOn === index,
+        onClick: this.processPlayerColor.bind(null, index),
+        clickable: mode === MODES.PLAYER
+      }} />
+    )
+
+    return (
+      <div>
+        {renderButton(GREEN)}
+        {renderButton(RED)}
+        <br />
+        {renderButton(BLUE)}
+        {renderButton(YELLOW)}
+      </div>
+    );
+  }
+
+  render(){
+    const {simonSequence, mode, gameOverReason} = this.state;
+    const score = simonSequence.length ? simonSequence.length - 1 : 0;
 
     return (
       <div>
@@ -189,11 +243,7 @@ class SimonSaysGame extends Component{
           ])}
         </p>
         <br />
-        <ColorButton color='green' on={currentOn === 0} onClick={this.processPlayerColor.bind(null,0)}/>
-        <ColorButton color='red' on={currentOn === 1} onClick={this.processPlayerColor.bind(null,1)}/>
-        <br />
-        <ColorButton color='blue' on={currentOn === 3} onClick={this.processPlayerColor.bind(null,3)}/>
-        <ColorButton color='#dd1' on={currentOn === 2} onClick={this.processPlayerColor.bind(null,2)}/>
+        {this.renderGrid()}
         <br />
         <p>Score: {score}</p>
       </div>
